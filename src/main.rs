@@ -1,3 +1,15 @@
+mod html_parser;
+mod tokenizer;
+
 fn main() {
-    println!("Hello, world!");
+    let html = "
+        <h1>Title</h1>
+        <div id=\"answer\" class=\"note\">
+            <p>Hello <em>world</em>!</p>
+        </div>
+    ";
+
+    let nodes = html_parser::parse(html);
+
+    html_parser::print(nodes);
 }
