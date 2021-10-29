@@ -1,9 +1,16 @@
 pub struct Tokenizer {
-    pub pos: usize,
-    pub input: String,
+    pos: usize,
+    input: String,
 }
 
 impl Tokenizer {
+    pub fn new(input: &str) -> Tokenizer {
+        Tokenizer {
+            pos: 0,
+            input: String::from(input),
+        }
+    }
+
     pub fn consume_whitespace(&mut self) {
         self.consume_while(char::is_whitespace);
     }

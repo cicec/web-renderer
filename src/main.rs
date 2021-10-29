@@ -11,5 +11,7 @@ fn main() {
 
     let nodes = html_parser::parse(html);
 
-    html_parser::print(nodes);
+    for node in nodes {
+        println!("{}", node);
+    }
 }

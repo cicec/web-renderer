@@ -1,51 +1,80 @@
 use crate::tokenizer::Tokenizer as T;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter, Result},
+};
 
 pub enum Node {
     Text(String),
     Element(Element),
 }
 
+impl Node {
+    fn element(tag: String, attrs: Attrs, children: Vec<Node>) -> Node {
+        Node::Element(Element {
+            tag,
+            attrs,
+            children,
+        })
+    }
+
+    fn text(value: String) -> Node {
+        Node::Text(value)
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Node::Element(e) => {
+                write!(f, "{}", e)
+            }
+
+            Node::Text(s) => {
+                write!(f, "{{ text: {} }}", s)
+            }
+        }
+    }
+}
+
 pub struct Element {
-    pub tag: String,
-    pub attrs: Attrs,
-    pub children: Vec<Node>,
+    tag: String,
+    attrs: Attrs,
+    children: Vec<Node>,
+}
+
+impl Display for Element {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let tag = &self.tag;
+
+        let attrs = &self
+            .attrs
+            .iter()
+            .map(|(name, value)| format!("{}: {}", name, value))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let children = &self
+            .children
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(
+            f,
+            "{{ tag: {}, attrs: [ {} ], children: [ {} ] }}",
+            tag, attrs, children
+        )
+    }
 }
 
 type Attrs = HashMap<String, String>;
 
 pub fn parse(input: &str) -> Vec<Node> {
-    let mut t = T {
-        pos: 0,
-        input: input.to_string(),
-    };
+    let mut t = T::new(input);
 
     parse_nodes(&mut t)
-}
-
-pub fn print(nodes: Vec<Node>) {
-    for node in nodes {
-        match node {
-            Node::Text(v) => {
-                println!("text: {}", v);
-            }
-            Node::Element(e) => {
-                let mut attrs: Vec<String> = Vec::new();
-
-                for (name, value) in e.attrs {
-                    attrs.push(format!("{}: {}", name, value));
-                }
-
-                println!("tag: {}, attrs: [ {} ]", e.tag, attrs.join(", "));
-
-                if e.children.len() > 0 {
-                    print(e.children);
-                }
-
-                println!("tag_end: {}", e.tag);
-            }
-        };
-    }
 }
 
 fn parse_nodes(t: &mut T) -> Vec<Node> {
@@ -85,11 +114,11 @@ fn parse_element(t: &mut T) -> Node {
     assert_eq!(parse_identifier(t), tag);
     assert_eq!(t.consume_char(), '>');
 
-    element(tag, attrs, children)
+    Node::element(tag, attrs, children)
 }
 
 fn parse_text(t: &mut T) -> Node {
-    text(t.consume_while(|c| c != '<'))
+    Node::text(t.consume_while(|c| c != '<'))
 }
 
 fn parse_attrs(t: &mut T) -> Attrs {
@@ -137,16 +166,4 @@ fn parse_identifier(t: &mut T) -> String {
         'a'..='z' | 'A'..='Z' | '0'..='9' => true,
         _ => false,
     })
-}
-
-fn element(tag: String, attrs: Attrs, children: Vec<Node>) -> Node {
-    Node::Element(Element {
-        tag,
-        attrs,
-        children,
-    })
-}
-
-fn text(value: String) -> Node {
-    Node::Text(value)
 }
