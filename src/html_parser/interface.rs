@@ -3,6 +3,7 @@ use std::cell::RefCell;
 #[derive(Debug)]
 pub enum Token {
     Tag(TagToken),
+    Characters(String),
 }
 
 pub trait TokenSink {
@@ -12,7 +13,6 @@ pub trait TokenSink {
 #[derive(Debug)]
 pub enum State {
     Data,
-    Text,
     TagOpen,
     EndTagOpen,
     TagName,
@@ -58,9 +58,19 @@ pub struct Node {
     pub children: RefCell<Vec<Node>>,
 }
 
+impl Node {
+    pub fn new(data: NodeData) -> Node {
+        Node {
+            data,
+            children: RefCell::new(vec![]),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum NodeData {
     Element(Element),
+    Text(String),
 }
 
 #[derive(Debug)]

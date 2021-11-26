@@ -1,4 +1,4 @@
-use std::{cell::RefCell, vec};
+use std::vec;
 
 use super::interface::{Attribute, Element, Node, NodeData, TagKind, Token, TokenSink};
 
@@ -8,32 +8,16 @@ pub struct TreeBuilder {
     stack: Vec<Node>,
 }
 
-impl TreeBuilder {
-    pub fn new() -> TreeBuilder {
-        TreeBuilder {
-            nodes: vec![],
-            stack: vec![],
-        }
-    }
-}
-
 impl TokenSink for TreeBuilder {
     fn process_token(&mut self, token: Token) {
         match token {
-            Token::Tag(t) => match t.kind {
-                TagKind::StartTag => {
-                    let node = create_element(&t.name, &t.attrs);
+            Token::Characters(text) => self.append_node(create_text(text)),
 
-                    self.stack.push(node)
-                }
+            Token::Tag(t) => match t.kind {
+                TagKind::StartTag => self.stack.push(create_element(&t.name, &t.attrs)),
 
                 TagKind::EndTag => match self.stack.pop() {
-                    Some(node) => {
-                        match self.stack.last() {
-                            Some(parent) => parent.children.borrow_mut().push(node),
-                            None => self.nodes.push(node),
-                        };
-                    }
+                    Some(node) => self.append_node(node),
                     None => (),
                 },
             },
@@ -41,12 +25,29 @@ impl TokenSink for TreeBuilder {
     }
 }
 
-fn create_element(name: &String, attrs: &Vec<Attribute>) -> Node {
-    Node {
-        data: NodeData::Element(Element {
-            name: String::from(name),
-            attrs: Vec::clone(attrs),
-        }),
-        children: RefCell::new(vec![]),
+impl TreeBuilder {
+    pub fn new() -> TreeBuilder {
+        TreeBuilder {
+            nodes: vec![],
+            stack: vec![],
+        }
     }
+
+    fn append_node(&mut self, node: Node) {
+        match self.stack.last() {
+            Some(parent) => parent.children.borrow_mut().push(node),
+            None => self.nodes.push(node),
+        };
+    }
+}
+
+fn create_text(text: String) -> Node {
+    Node::new(NodeData::Text(text))
+}
+
+fn create_element(name: &String, attrs: &Vec<Attribute>) -> Node {
+    Node::new(NodeData::Element(Element {
+        name: String::from(name),
+        attrs: Vec::clone(attrs),
+    }))
 }

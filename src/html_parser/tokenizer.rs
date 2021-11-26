@@ -6,6 +6,7 @@ use super::{
 pub struct Tokenizer<Sink> {
     pub sink: Sink,
     state: State,
+    current_chars: String,
     current_tag_kind: TagKind,
     current_tag_name: String,
     current_tag_self_closing: bool,
@@ -19,6 +20,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         Tokenizer {
             sink,
             state: State::Data,
+            current_chars: String::new(),
             current_tag_kind: TagKind::StartTag,
             current_tag_name: String::new(),
             current_tag_self_closing: false,
@@ -38,13 +40,11 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     pub fn step(&mut self, char: char) {
         match self.state {
             State::Data => match char {
-                '<' => self.state = State::TagOpen,
-                _ => self.state = State::Text,
-            },
-
-            State::Text => match char {
-                '<' => self.state = State::TagOpen,
-                _ => {}
+                '<' => {
+                    self.state = State::TagOpen;
+                    self.emit_chars();
+                }
+                c => self.push_char(c),
             },
 
             State::TagOpen => match char {
@@ -180,6 +180,28 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         }
     }
 
+    fn emit_chars(&mut self) {
+        self.process_token(Token::Characters(String::from(&self.current_chars)));
+        self.current_chars.clear();
+    }
+
+    fn emit_tag(&mut self) {
+        self.finish_attribute();
+
+        let token = Token::Tag(TagToken {
+            name: String::from(&self.current_tag_name),
+            kind: self.current_tag_kind,
+            self_closing: self.current_tag_self_closing,
+            attrs: Vec::clone(&self.current_tag_attrs),
+        });
+
+        self.process_token(token)
+    }
+
+    fn push_char(&mut self, c: char) {
+        self.current_chars.push(c)
+    }
+
     fn create_tag(&mut self, kind: TagKind, c: char) {
         self.discard_tag();
         self.current_tag_name.push(c);
@@ -194,19 +216,6 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         self.current_tag_name.clear();
         self.current_tag_attrs.clear();
         self.current_tag_self_closing = false;
-    }
-
-    fn emit_tag(&mut self) {
-        self.finish_attribute();
-
-        let token = Token::Tag(TagToken {
-            name: String::from(&self.current_tag_name),
-            kind: self.current_tag_kind,
-            self_closing: self.current_tag_self_closing,
-            attrs: Vec::clone(&self.current_tag_attrs),
-        });
-
-        self.process_token(token)
     }
 
     fn create_attribute(&mut self, c: char) {
