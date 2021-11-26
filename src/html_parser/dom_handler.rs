@@ -3,12 +3,12 @@ use std::vec;
 use super::interface::{Attribute, Element, Node, NodeData, TagKind, Token, TokenSink};
 
 #[derive(Debug)]
-pub struct TreeBuilder {
+pub struct DOMHandler {
     pub nodes: Vec<Node>,
     stack: Vec<Node>,
 }
 
-impl TokenSink for TreeBuilder {
+impl TokenSink for DOMHandler {
     fn process_token(&mut self, token: Token) {
         match token {
             Token::Characters(text) => self.append_node(create_text(text)),
@@ -25,9 +25,9 @@ impl TokenSink for TreeBuilder {
     }
 }
 
-impl TreeBuilder {
-    pub fn new() -> TreeBuilder {
-        TreeBuilder {
+impl DOMHandler {
+    pub fn new() -> DOMHandler {
+        DOMHandler {
             nodes: vec![],
             stack: vec![],
         }

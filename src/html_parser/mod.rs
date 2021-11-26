@@ -1,16 +1,15 @@
-use self::{buffer::Buffer, interface::Node, tokenizer::Tokenizer, tree_builder::TreeBuilder};
+use self::{buffer::Buffer, dom_handler::DOMHandler, interface::Node, tokenizer::Tokenizer};
 
 mod buffer;
+mod dom_handler;
 mod interface;
 mod tokenizer;
-mod tree_builder;
 
 pub fn parse(input: &str) -> Vec<Node> {
-    let tree_builder = TreeBuilder::new();
+    let handler = DOMHandler::new();
     let mut buffer = Buffer::new(input);
-    let mut tokenizer = Tokenizer::new(tree_builder);
+    let mut tokenizer = Tokenizer::new(handler);
 
     tokenizer.feed(&mut buffer);
-
     tokenizer.sink.nodes
 }
