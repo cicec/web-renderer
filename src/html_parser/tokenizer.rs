@@ -3,6 +3,34 @@ use super::{
     interface::{AttrValueKind, Attribute, State, TagKind, TagToken, Token, TokenSink},
 };
 
+use self::AttrValueKind::{DoubleQuoted, SingleQuoted, Unquoted};
+use self::TagKind::{EndTag, StartTag};
+
+macro_rules! go {
+    ($me:ident to $s:ident) => {{
+        $me.state = State::$s;
+    }};
+
+    ($me:ident to $s:ident $k1:expr) => {{
+        $me.state = State::$s($k1);
+    }};
+
+    ($me:ident $a:tt; $($rest:tt)*) => {{
+        $me.$a();
+        go!($me $($rest)*);
+    }};
+
+    ($me:ident $a:tt $b:tt; $($rest:tt)*) => {{
+        $me.$a($b);
+        go!($me $($rest)*);
+    }};
+
+    ($me:ident $a:tt $b:tt $c:tt; $($rest:tt)*) => {{
+        $me.$a($b, $c);
+        go!($me $($rest)*);
+    }};
+}
+
 pub struct Tokenizer<Sink> {
     pub sink: Sink,
     state: State,
@@ -40,20 +68,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     pub fn step(&mut self, char: char) {
         match self.state {
             State::Data => match char {
-                '<' => {
-                    self.state = State::TagOpen;
-                    self.emit_chars();
-                }
+                '<' => go!(self emit_chars; to TagOpen),
                 c => self.push_char(c),
             },
 
             State::TagOpen => match char {
-                '/' => self.state = State::EndTagOpen,
+                '/' => go!(self to EndTagOpen),
                 c => match lower_ascii_letter(c) {
-                    Some(c) => {
-                        self.state = State::TagName;
-                        self.create_tag(TagKind::StartTag, c);
-                    }
+                    Some(c) => go!(self create_tag StartTag c; to TagName),
                     None => (),
                 },
             },
@@ -61,10 +83,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             State::EndTagOpen => match char {
                 '>' => (),
                 c => match lower_ascii_letter(c) {
-                    Some(_) => {
-                        self.state = State::TagName;
-                        self.create_tag(TagKind::EndTag, c);
-                    }
+                    Some(c) => go!(self create_tag EndTag c; to TagName),
                     None => (),
                 },
             },
@@ -72,109 +91,79 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             State::SelfClosingStartTag => match char {
                 '>' => {
                     self.current_tag_self_closing = true;
-                    self.state = State::Data;
-                    self.emit_tag();
+                    go!(self emit_tag; to Data);
                 }
                 _ => (),
             },
 
             State::TagName => match char {
                 '\t' | '\n' | '\x0C' | ' ' => self.state = State::BeforeAttributeName,
-                '/' => self.state = State::SelfClosingStartTag,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '/' => go!(self emit_chars; to SelfClosingStartTag),
+                '>' => go!(self emit_tag; to Data),
                 c => self.push_tag_name(c.to_ascii_lowercase()),
             },
 
             State::BeforeAttributeName => match char {
                 '\t' | '\n' | '\x0C' | ' ' => (),
-                '/' => self.state = State::SelfClosingStartTag,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '/' => go!(self to SelfClosingStartTag),
+                '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
-                    Some(c) => {
-                        self.state = State::AttributeName;
-                        self.create_attribute(c);
-                    }
+                    Some(c) => go!(self create_attribute c; to AttributeName),
                     None => (),
                 },
             },
 
             State::AttributeName => match char {
-                '\t' | '\n' | '\x0C' | ' ' => self.state = State::AfterAttributeName,
-                '/' => self.state = State::SelfClosingStartTag,
-                '=' => self.state = State::BeforeAttributeValue,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '\t' | '\n' | '\x0C' | ' ' => go!(self to AfterAttributeName),
+                '/' => go!(self to SelfClosingStartTag),
+                '=' => go!(self to BeforeAttributeValue),
+                '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
-                    Some(c) => {
-                        self.push_attribute_name(c);
-                    }
+                    Some(c) => self.push_attribute_name(c),
                     None => (),
                 },
             },
 
             State::AfterAttributeName => match char {
                 '\t' | '\n' | '\x0C' | ' ' => (),
-                '/' => self.state = State::SelfClosingStartTag,
-                '=' => self.state = State::BeforeAttributeValue,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '/' => go!(self to SelfClosingStartTag),
+                '=' => go!(self to BeforeAttributeValue),
+                '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
-                    Some(c) => {
-                        self.state = State::AttributeName;
-                        self.create_attribute(c);
-                    }
+                    Some(c) => go!(self create_attribute c; to AttributeName),
                     None => (),
                 },
             },
 
             State::BeforeAttributeValue => match char {
                 '\t' | '\n' | '\r' | '\x0C' | ' ' => (),
-                '"' => self.state = State::AttributeValue(AttrValueKind::DoubleQuoted),
-                '\'' => self.state = State::AttributeValue(AttrValueKind::SingleQuoted),
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
-                _ => self.state = State::AttributeValue(AttrValueKind::Unquoted),
+                '"' => go!(self to AttributeValue DoubleQuoted),
+                '\'' => go!(self to AttributeValue SingleQuoted),
+                '>' => go!(self emit_tag; to Data),
+                _ => go!(self to AttributeValue Unquoted),
             },
 
             State::AttributeValue(AttrValueKind::DoubleQuoted) => match char {
-                '"' => self.state = State::AfterAttributeValueQuoted,
+                '"' => go!(self to AfterAttributeValueQuoted),
                 c => self.push_attribute_value(c.to_ascii_lowercase()),
             },
 
             State::AttributeValue(AttrValueKind::SingleQuoted) => match char {
-                '\'' => self.state = State::AfterAttributeValueQuoted,
+                '\'' => go!(self to AfterAttributeValueQuoted),
                 c => self.push_attribute_value(c.to_ascii_lowercase()),
             },
 
             State::AttributeValue(AttrValueKind::Unquoted) => match char {
-                '\t' | '\n' | '\r' | '\x0C' | ' ' => self.state = State::BeforeAttributeName,
-                '/' => self.state = State::SelfClosingStartTag,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '\t' | '\n' | '\r' | '\x0C' | ' ' => go!(self to BeforeAttributeName),
+                '/' => go!(self to SelfClosingStartTag),
+                '>' => go!(self emit_tag; to Data),
                 c => self.push_attribute_value(c.to_ascii_lowercase()),
             },
 
             State::AfterAttributeValueQuoted => match char {
-                '\t' | '\n' | '\r' | '\x0C' | ' ' => self.state = State::BeforeAttributeName,
-                '/' => self.state = State::SelfClosingStartTag,
-                '>' => {
-                    self.state = State::Data;
-                    self.emit_tag();
-                }
+                '\t' | '\n' | '\r' | '\x0C' | ' ' => go!(self to BeforeAttributeName),
+                '/' => go!(self to SelfClosingStartTag),
+                '>' => go!(self emit_tag; to Data),
                 _ => (),
             },
         }
