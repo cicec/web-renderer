@@ -21,6 +21,8 @@ impl TokenSink for DOMHandler {
                     None => (),
                 },
             },
+
+            Token::ParseError(msg) => panic!("{}", msg),
         }
     }
 }

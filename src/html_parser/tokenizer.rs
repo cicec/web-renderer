@@ -34,6 +34,7 @@ macro_rules! go {
 pub struct Tokenizer<Sink> {
     pub sink: Sink,
     state: State,
+    current_char: char,
     current_chars: String,
     current_tag_kind: TagKind,
     current_tag_name: String,
@@ -48,6 +49,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         Tokenizer {
             sink,
             state: State::Data,
+            current_char: '\0',
             current_chars: String::new(),
             current_tag_kind: TagKind::StartTag,
             current_tag_name: String::new(),
@@ -66,6 +68,8 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     }
 
     pub fn step(&mut self, char: char) {
+        self.current_char = char;
+
         match self.state {
             State::Data => match char {
                 '<' => go!(self emit_chars; to TagOpen),
@@ -76,15 +80,15 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 '/' => go!(self to EndTagOpen),
                 c => match lower_ascii_letter(c) {
                     Some(c) => go!(self create_tag StartTag c; to TagName),
-                    None => (),
+                    None => self.emit_error(),
                 },
             },
 
             State::EndTagOpen => match char {
-                '>' => (),
+                '>' => self.emit_error(),
                 c => match lower_ascii_letter(c) {
                     Some(c) => go!(self create_tag EndTag c; to TagName),
-                    None => (),
+                    None => self.emit_error(),
                 },
             },
 
@@ -93,11 +97,11 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     self.current_tag_self_closing = true;
                     go!(self emit_tag; to Data);
                 }
-                _ => (),
+                _ => self.emit_error(),
             },
 
             State::TagName => match char {
-                '\t' | '\n' | '\x0C' | ' ' => self.state = State::BeforeAttributeName,
+                '\t' | '\n' | '\x0C' | ' ' => go!(self to BeforeAttributeName),
                 '/' => go!(self emit_chars; to SelfClosingStartTag),
                 '>' => go!(self emit_tag; to Data),
                 c => self.push_tag_name(c.to_ascii_lowercase()),
@@ -109,7 +113,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
                     Some(c) => go!(self create_attribute c; to AttributeName),
-                    None => (),
+                    None => self.emit_error(),
                 },
             },
 
@@ -120,7 +124,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
                     Some(c) => self.push_attribute_name(c),
-                    None => (),
+                    None => self.emit_error(),
                 },
             },
 
@@ -131,7 +135,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 '>' => go!(self emit_tag; to Data),
                 c => match lower_ascii_letter(c) {
                     Some(c) => go!(self create_attribute c; to AttributeName),
-                    None => (),
+                    None => self.emit_error(),
                 },
             },
 
@@ -167,6 +171,15 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 _ => (),
             },
         }
+    }
+
+    fn emit_error(&mut self) {
+        let msg = format!(
+            "Unexpected character '{}' in state {:?}",
+            self.current_char, self.state
+        );
+
+        self.process_token(Token::ParseError(msg))
     }
 
     fn emit_chars(&mut self) {

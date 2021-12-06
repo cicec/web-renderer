@@ -4,6 +4,7 @@ use std::cell::RefCell;
 pub enum Token {
     Tag(TagToken),
     Characters(String),
+    ParseError(String),
 }
 
 pub trait TokenSink {
